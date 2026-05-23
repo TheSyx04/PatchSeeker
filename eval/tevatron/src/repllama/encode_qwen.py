@@ -56,7 +56,8 @@ def main():
         print("Loading tokenizer ...")
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir
+            cache_dir=model_args.cache_dir,
+            use_fast=False,   # Qwen2Tokenizer fast version không có prepare_for_model()
         )
         #for qwen is eos and for llama or cr is unk
         tokenizer.pad_token_id = tokenizer.eos_token_id
