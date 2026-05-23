@@ -28,6 +28,12 @@ CKPT_DIR="./checkpoints/${MODEL_FOLDER}"       # local path lưu adapter
 DATA_DIR="${DATA_DIR:-./pipeline_test/data}"
 OUTPUT_DIR="./pipeline_test/output"
 EVAL_SRC="./eval/tevatron/src"
+ENCODE_SCRIPT="${EVAL_SRC}/repllama/encode_qwen.py"   # dùng encode_qwen.py cho Qwen models
+
+# Model pickle: cache model+tokenizer sau lần load đầu → lần sau nhanh hơn
+MODEL_PICKLE_DIR="./pipeline_test/output/model_pickle"
+mkdir -p "${MODEL_PICKLE_DIR}"
+MODEL_PICKLE_PATH="${MODEL_PICKLE_DIR}/encode_model_tokenizer.pkl"
 
 mkdir -p "${OUTPUT_DIR}/corpus_emb"
 mkdir -p "${OUTPUT_DIR}/queries_emb"
@@ -139,7 +145,7 @@ echo ""
 echo "[2/4] Encode corpus (commits)..."
 T_START=$(date +%s)
 
-CUDA_VISIBLE_DEVICES=0 python3 ${EVAL_SRC}/repllama/encode_cve.py \
+CUDA_VISIBLE_DEVICES=0 python3 ${ENCODE_SCRIPT} \
     --output_dir=temp \
     --model_name_or_path "${CKPT_DIR}" \
     --tokenizer_name "${BASE_MODEL}" \
@@ -152,7 +158,8 @@ CUDA_VISIBLE_DEVICES=0 python3 ${EVAL_SRC}/repllama/encode_cve.py \
     --raw_file_path "${DATA_DIR}/corpus.json" \
     --encoded_save_path "${OUTPUT_DIR}/corpus_emb/corpus.pkl" \
     --encode_num_shard 1 \
-    --encode_shard_index 0
+    --encode_shard_index 0 \
+    --model_pickle_path "${MODEL_PICKLE_PATH}"
 
 T_CORPUS=$(($(date +%s) - T_START))
 echo "✅ Encode corpus xong: ${T_CORPUS}s ($(echo "scale=1; $T_CORPUS/60" | bc) phút)"
@@ -162,7 +169,7 @@ echo ""
 echo "[3/4] Encode queries (CVE descriptions)..."
 T_START=$(date +%s)
 
-CUDA_VISIBLE_DEVICES=0 python3 ${EVAL_SRC}/repllama/encode_cve.py \
+CUDA_VISIBLE_DEVICES=0 python3 ${ENCODE_SCRIPT} \
     --output_dir=temp \
     --model_name_or_path "${CKPT_DIR}" \
     --tokenizer_name "${BASE_MODEL}" \
@@ -174,7 +181,8 @@ CUDA_VISIBLE_DEVICES=0 python3 ${EVAL_SRC}/repllama/encode_cve.py \
     --train_dir "${DATA_DIR}/queries.json" \
     --raw_file_path "${DATA_DIR}/queries.json" \
     --encoded_save_path "${OUTPUT_DIR}/queries_emb/queries.pkl" \
-    --encode_is_qry
+    --encode_is_qry \
+    --model_pickle_path "${MODEL_PICKLE_PATH}"
 
 T_QUERIES=$(($(date +%s) - T_START))
 echo "✅ Encode queries xong: ${T_QUERIES}s"
