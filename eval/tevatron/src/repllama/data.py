@@ -174,14 +174,12 @@ class TrainDataset(Dataset):
         self.total_len = len(self.train_data)
 
     def create_one_example(self, text_encoding: List[int], is_query=False):
-        item = self.tok.prepare_for_model(
-            text_encoding + [self.tok.eos_token_id],
-            truncation='only_first',
-            max_length=self.data_args.q_max_len if is_query else self.data_args.p_max_len,
-            padding=False,
-            return_attention_mask=False,
-            return_token_type_ids=False,
-        )
+        max_len = self.data_args.q_max_len if is_query else self.data_args.p_max_len
+        input_ids = (text_encoding + [self.tok.eos_token_id])[:max_len]
+        item = BatchEncoding({
+            'input_ids': input_ids,
+            'attention_mask': [1] * len(input_ids),
+        })
         return item
 
     def __len__(self):
@@ -239,13 +237,11 @@ class EncodeDataset(Dataset):
 
     def __getitem__(self, item) -> Tuple[str, BatchEncoding]:
         text_id, text = (self.encode_data[item][f] for f in self.input_keys)
-        encoded_text = self.tok.prepare_for_model(
-            text + [self.tok.eos_token_id],
-            max_length=self.max_len,
-            truncation='only_first',
-            padding=False,
-            return_token_type_ids=False,
-        )
+        input_ids = (text + [self.tok.eos_token_id])[:self.max_len]
+        encoded_text = BatchEncoding({
+            'input_ids': input_ids,
+            'attention_mask': [1] * len(input_ids),
+        })
         return text_id, encoded_text
 
 
