@@ -107,12 +107,12 @@ def main():
     )
     encoded = []
     lookup_indices = []
-    model = model.to(training_args.device)
+    # device_map="auto" đã đặt model lên GPU, không cần .to(device) thủ công
     model.eval()
 
     for (batch_ids, batch) in tqdm(encode_loader):
         lookup_indices.extend(batch_ids)
-        with torch.cuda.amp.autocast() if training_args.fp16 else nullcontext():
+        with torch.amp.autocast('cuda') if training_args.fp16 else nullcontext():
             with torch.no_grad():
                 for k, v in batch.items():
                     batch[k] = v.to(training_args.device)

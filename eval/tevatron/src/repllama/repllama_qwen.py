@@ -21,7 +21,6 @@ class RepLLaMA(EncoderModel):
         super().__init__(lm_q, lm_p, pooler, untie_encoder, negatives_x_device)
         self.config = lm_q.config
 
-    # Existing methods (encode_passage, encode_query, compute_similarity, etc.) remain unchanged
     def encode_passage(self, psg):
         if psg is None:
             return None
@@ -54,17 +53,50 @@ class RepLLaMA(EncoderModel):
 
     @classmethod
     def load(cls, model_name_or_path, **hf_kwargs):
-        # Load Qwen3 model directly without LoRA
-        base_model = AutoModel.from_pretrained(model_name_or_path, **hf_kwargs)
-        
-        # Set padding token ID if not already set
+        """
+        Load Qwen3-8B + LoRA adapter đúng cách:
+        1. Đọc base_model_name từ adapter_config.json trong checkpoint dir
+        2. Load base model ở fp16 để fit T4 16GB VRAM (~8GB thay vì 16GB)
+        3. Load LoRA adapter qua PeftModel.from_pretrained()
+        4. merge_and_unload() → inference nhanh, không overhead LoRA
+        """
+        import os
+        import json
+
+        hf_kwargs.pop("cache_dir", None)  # không cần khi load local
+
+        # Đọc base_model_name từ adapter_config.json
+        adapter_config_path = os.path.join(model_name_or_path, "adapter_config.json")
+        if os.path.exists(adapter_config_path):
+            with open(adapter_config_path) as f:
+                adapter_cfg = json.load(f)
+            base_model_id = adapter_cfg.get("base_model_name_or_path", "Qwen/Qwen3-8B")
+        else:
+            base_model_id = "Qwen/Qwen3-8B"
+
+        logger.info(f"Loading base model: {base_model_id} (fp16, device_map=auto)")
+
+        # Load base model ở fp16 → ~8GB VRAM thay vì 16GB
+        base_model = AutoModel.from_pretrained(
+            base_model_id,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+
         if base_model.config.pad_token_id is None:
             base_model.config.pad_token_id = 0
-        
-        # Initialize RepLLaMA with the loaded model
+
+        # Load LoRA adapter lên trên base model
+        logger.info(f"Loading LoRA adapter from: {model_name_or_path}")
+        lora_model = PeftModel.from_pretrained(base_model, model_name_or_path)
+
+        # Merge LoRA weights vào base → inference nhanh hơn
+        logger.info("Merging LoRA weights into base model...")
+        lora_model = lora_model.merge_and_unload()
+
         model = cls(
-            lm_q=base_model,
-            lm_p=base_model,
+            lm_q=lora_model,
+            lm_p=lora_model,
             pooler=None,
             untie_encoder=False
         )
