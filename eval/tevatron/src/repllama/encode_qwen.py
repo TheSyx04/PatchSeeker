@@ -99,16 +99,15 @@ def main():
 
     for (batch_ids, batch) in tqdm(encode_loader):
         lookup_indices.extend(batch_ids)
-        with torch.amp.autocast('cuda') if training_args.fp16 else nullcontext():
-            with torch.no_grad():
-                for k, v in batch.items():
-                    batch[k] = v.to(training_args.device)
-                if data_args.encode_is_qry:
-                    model_output = model(query=batch)
-                    encoded.append(model_output.q_reps.cpu().detach().numpy())
-                else:
-                    model_output = model(passage=batch)
-                    encoded.append(model_output.p_reps.cpu().detach().numpy())
+        with torch.no_grad():
+            for k, v in batch.items():
+                batch[k] = v.to('cuda:0')   # 4-bit model cố định trên cuda:0
+            if data_args.encode_is_qry:
+                model_output = model(query=batch)
+                encoded.append(model_output.q_reps.cpu().detach().numpy())
+            else:
+                model_output = model(passage=batch)
+                encoded.append(model_output.p_reps.cpu().detach().numpy())
 
     encoded = np.concatenate(encoded)
 

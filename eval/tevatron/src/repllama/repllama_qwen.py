@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from transformers import LlamaModel, PreTrainedModel
+from transformers import PreTrainedModel
 import logging
-from peft import LoraConfig, get_peft_model, PeftModel, TaskType
+from peft import PeftModel
 from tevatron.modeling.encoder import EncoderModel
 from transformers import AutoModel
 
@@ -30,7 +30,7 @@ class RepLLaMA(EncoderModel):
         sequence_lengths = attention_mask.sum(dim=1)
         last_token_indices = sequence_lengths - 1
         p_reps = p_hidden[torch.arange(p_hidden.size(0)), last_token_indices]
-        p_reps = nn.functional.normalize(p_reps, p=2, dim=-1)
+        p_reps = nn.functional.normalize(p_reps.float(), p=2, dim=-1)
         return p_reps
 
     def encode_query(self, qry):
@@ -42,7 +42,7 @@ class RepLLaMA(EncoderModel):
         sequence_lengths = attention_mask.sum(dim=1)
         last_token_indices = sequence_lengths - 1
         q_reps = q_hidden[torch.arange(q_hidden.size(0)), last_token_indices]
-        q_reps = nn.functional.normalize(q_reps, p=2, dim=-1)
+        q_reps = nn.functional.normalize(q_reps.float(), p=2, dim=-1)
         return q_reps
 
     def compute_similarity(self, q_reps, p_reps):
@@ -54,16 +54,16 @@ class RepLLaMA(EncoderModel):
     @classmethod
     def load(cls, model_name_or_path, **hf_kwargs):
         """
-        Load Qwen3-8B + LoRA adapter đúng cách:
-        1. Đọc base_model_name từ adapter_config.json trong checkpoint dir
-        2. Load base model ở fp16 để fit T4 16GB VRAM (~8GB thay vì 16GB)
-        3. Load LoRA adapter qua PeftModel.from_pretrained()
-        4. merge_and_unload() → inference nhanh, không overhead LoRA
+        Load Qwen3-8B với 4-bit quantization để fit T4 16GB:
+        - 4-bit NF4: ~4.5GB thay vì 16GB (fp16)
+        - Còn ~10GB cho activations, batch size lớn
+        - Dùng PeftModel để load LoRA (không merge vì quantized model không merge được)
         """
         import os
         import json
+        from transformers import BitsAndBytesConfig
 
-        hf_kwargs.pop("cache_dir", None)  # không cần khi load local
+        hf_kwargs.pop("cache_dir", None)
 
         # Đọc base_model_name từ adapter_config.json
         adapter_config_path = os.path.join(model_name_or_path, "adapter_config.json")
@@ -74,25 +74,36 @@ class RepLLaMA(EncoderModel):
         else:
             base_model_id = "Qwen/Qwen3-8B"
 
-        logger.info(f"Loading base model: {base_model_id} (fp16, device_map=auto)")
+        logger.info(f"Loading base model: {base_model_id} (4-bit NF4, T4 16GB optimized)")
 
-        # Load base model ở fp16 → ~8GB VRAM thay vì 16GB
+        # 4-bit NF4 quantization → ~4.5GB VRAM (vs 16GB fp16)
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+
         base_model = AutoModel.from_pretrained(
             base_model_id,
-            torch_dtype=torch.float16,
-            device_map="auto",
+            quantization_config=bnb_config,
+            device_map="cuda:0",   # cố định GPU 0, không split sang CPU
         )
 
         if base_model.config.pad_token_id is None:
             base_model.config.pad_token_id = 0
 
-        # Load LoRA adapter lên trên base model
+        # Load LoRA adapter
         logger.info(f"Loading LoRA adapter from: {model_name_or_path}")
-        lora_model = PeftModel.from_pretrained(base_model, model_name_or_path)
+        lora_model = PeftModel.from_pretrained(
+            base_model,
+            model_name_or_path,
+            is_trainable=False,
+        )
+        lora_model.eval()
 
-        # Merge LoRA weights vào base → inference nhanh hơn
-        logger.info("Merging LoRA weights into base model...")
-        lora_model = lora_model.merge_and_unload()
+        # Không merge vì quantized model không hỗ trợ merge_and_unload()
+        # PeftModel.forward() tự apply LoRA trong forward pass
 
         model = cls(
             lm_q=lora_model,
