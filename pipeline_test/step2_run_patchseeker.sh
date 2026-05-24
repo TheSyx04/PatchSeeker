@@ -140,6 +140,21 @@ echo "  Download xong: ${T_DL}s"
 echo "  Files trong ${CKPT_DIR}:"
 ls -lh "${CKPT_DIR}/"
 
+# ── [1b] Cài dependencies ────────────────────────────────────
+echo ""
+echo "[1b/4] Cài dependencies từ requirements.txt..."
+pip install -q -r pipeline_test/requirements.txt
+
+# Cài tevatron từ source (không có trên PyPI)
+if ! python3 -c "import tevatron" 2>/dev/null; then
+    echo "  → Cài tevatron từ source..."
+    pip install -q -e "${EVAL_SRC}"
+fi
+
+# Đảm bảo tevatron importable
+export PYTHONPATH="${EVAL_SRC}:${PYTHONPATH}"
+echo "  ✅ Dependencies ready"
+
 # ── [2] Encode corpus (commits) ──────────────────────────────
 echo ""
 echo "[2/4] Encode corpus (commits)..."

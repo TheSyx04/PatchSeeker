@@ -1,0 +1,43 @@
+# ============================================================
+# PatchSeeker Pipeline — Requirements
+# Dùng cho: pipeline_test/ (Encode + FAISS retrieval)
+# GPU Target: Kaggle T4 (CUDA 12.x, sm_75+)
+#
+# Cài đặt:
+#   pip install -r pipeline_test/requirements.txt
+#   pip install -e eval/tevatron/src   # tevatron từ source
+# ============================================================
+
+# ── Core ML ─────────────────────────────────────────────────
+torch>=2.2.0
+transformers>=4.51.3
+accelerate>=1.6.0
+peft>=0.5.0
+safetensors>=0.5.3
+tokenizers>=0.21.1
+
+# ── 4-bit Quantization (NF4) ────────────────────────────────
+# Cần thiết để load Qwen3-8B vào T4 16GB
+bitsandbytes>=0.43.0
+
+# ── FAISS (Retrieval) ────────────────────────────────────────
+# Chọn 1 trong 2:
+faiss-gpu>=1.7.2        # GPU T4/A100 — nhanh hơn (~10x)
+# faiss-cpu>=1.7.2      # CPU fallback — bỏ comment nếu không có GPU
+
+# ── Data / IO ────────────────────────────────────────────────
+datasets>=2.18.0
+huggingface-hub>=0.30.2
+numpy>=1.26.4
+pandas>=2.2.3
+
+# ── Utilities ────────────────────────────────────────────────
+tqdm>=4.67.1
+sentencepiece>=0.2.0
+requests>=2.32.3
+pyarrow>=12.0.0
+
+# ── Evaluation (Step 3) ──────────────────────────────────────
+# Cần nếu muốn tính MRR/Recall tự động
+# ir-measures>=0.3.7
+# pytrec-eval-terrier>=0.5.7
