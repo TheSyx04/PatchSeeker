@@ -22,7 +22,7 @@ bitsandbytes>=0.43.0
 
 # ── FAISS (Retrieval) ────────────────────────────────────────
 # Chọn 1 trong 2:
-faiss-gpu>=1.7.2        # GPU T4/A100 — nhanh hơn (~10x)
+faiss-gpu      # GPU T4/A100 — nhanh hơn (~10x)
 # faiss-cpu>=1.7.2      # CPU fallback — bỏ comment nếu không có GPU
 
 # ── Data / IO ────────────────────────────────────────────────
