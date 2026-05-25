@@ -27,6 +27,9 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Fix UnicodeEncodeError trên Windows (cp1252 → utf-8)
+sys.stdout.reconfigure(encoding="utf-8")
+
 import requests
 from tqdm import tqdm
 
@@ -84,12 +87,10 @@ def get_commits_in_window(
     Chạy 1 lệnh git log duy nhất → rất nhanh dù có 65K commits.
     Returns: [{"commit_id": str, "date": str, "msg": str}, ...]
     """
-    # Separator an toàn (unlikely to appear in commit messages)
-    SEP = "\x00FIELD\x00"
-    REC = "\x00REC\x00"
-
-    # %H = full hash, %ai = author date ISO, %s = subject, %b = body
-    fmt = f"%H{SEP}%ai{SEP}%s{SEP}%b{REC}"
+    # Dùng tab làm separator — safe trên Windows (không dùng \x00 vì Windows
+    # không cho phép null bytes trong CreateProcess command-line arguments)
+    # Format: "<hash>\t<date>\t<subject>"  — 1 dòng mỗi commit
+    fmt = "%H\t%ai\t%s"
 
     cmd = [
         "git", f"--git-dir={repo_path}",
@@ -109,34 +110,24 @@ def get_commits_in_window(
         return []
 
     commits = []
-    for record in result.stdout.split(REC):
-        record = record.strip()
-        if not record:
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
             continue
-        parts = record.split(SEP)
+        # Format: "<hash>\t<date ISO>\t<subject>"
+        parts = line.split("\t", 2)
         if len(parts) < 3:
             continue
 
         commit_id = parts[0].strip()
         date_str  = parts[1].strip()[:10]   # YYYY-MM-DD
         subject   = parts[2].strip()
-        body      = parts[3].strip() if len(parts) > 3 else ""
-
-        # Ghép subject + body thành msg (bỏ lines rỗng đầu/cuối body)
-        msg = subject
-        if body:
-            body_clean = "\n".join(
-                ln for ln in body.splitlines()
-                if ln.strip() and not ln.startswith("Signed-off-by:")
-            )
-            if body_clean:
-                msg = subject + "\n" + body_clean[:500]   # giới hạn 500 ký tự body
 
         if commit_id and len(commit_id) == 40:
             commits.append({
                 "commit_id": commit_id,
                 "date":      date_str,
-                "msg":       msg,
+                "msg":       subject,
             })
 
     return commits
