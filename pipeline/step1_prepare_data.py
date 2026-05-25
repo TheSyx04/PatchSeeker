@@ -51,11 +51,14 @@ COMMIT_RE = re.compile(
 # 1. Git operations
 # ═══════════════════════════════════════════════════════════════════════════
 
-def clone_repo(repo_url: str, repo_path: Path) -> None:
+def clone_repo(repo_url: str, repo_path: Path, shallow_since: str | None = None) -> None:
     """Blobless bare clone — chỉ tải commit history, không tải file contents.
+
+    shallow_since: nếu đặt (vd '2019-01-01'), chỉ clone commits từ ngày đó trở đi.
     
-    Linux kernel: ~1-2GB  (so với ~5GB full clone)
-    OpenSSL:      ~50MB
+    Linux kernel full blobless:          ~1-2GB  (1.3M commits)
+    Linux kernel shallow-since 2019:     ~200-400MB  (~390K commits) ✅
+    OpenSSL full blobless:               ~50MB
     """
     if repo_path.exists():
         print(f"  [skip] Repo đã tồn tại: {repo_path}")
@@ -63,16 +66,22 @@ def clone_repo(repo_url: str, repo_path: Path) -> None:
 
     print(f"  Cloning {repo_url}")
     print(f"  → {repo_path}")
-    print(f"  Dùng --filter=blob:none (blobless) để giảm dung lượng...")
+    if shallow_since:
+        print(f"  Dùng --filter=blob:none --shallow-since={shallow_since}")
+        print(f"  (Chỉ tải commits từ {shallow_since} — bỏ qua toàn bộ lịch sử cũ)")
+    else:
+        print(f"  Dùng --filter=blob:none (blobless bare clone)")
 
     repo_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "git", "clone",
         "--filter=blob:none",   # không tải file blobs
         "--bare",               # không cần working directory
-        repo_url,
-        str(repo_path),
     ]
+    if shallow_since:
+        cmd.append(f"--shallow-since={shallow_since}")
+    cmd += [repo_url, str(repo_path)]
+
     subprocess.run(cmd, check=True)
     print(f"  ✅ Clone xong: {repo_path}")
 
@@ -276,9 +285,11 @@ def main():
     print(f"  ✅ {len(cves)} CVEs loaded")
 
     # ── 2. Clone repo ─────────────────────────────────────────────────────
-    print("\n[2/5] Clone repo (blobless bare)...")
+    shallow_since = cfg.get("shallow_since")  # None cho OpenSSL, "2019-01-01" cho Linux
+    clone_label = f"shallow-since={shallow_since}" if shallow_since else "full blobless"
+    print(f"\n[2/5] Clone repo ({clone_label})...")
     if not args.skip_clone:
-        clone_repo(cfg["repo_url"], repo_path)
+        clone_repo(cfg["repo_url"], repo_path, shallow_since=shallow_since)
     else:
         print(f"  [skip] --skip-clone")
 
