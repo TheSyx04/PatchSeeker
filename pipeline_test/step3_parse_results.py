@@ -9,7 +9,12 @@ Chạy: python pipeline_test/step3_parse_results.py
 
 import json
 import os
+import sys
 from datetime import datetime
+
+# Fix UnicodeEncodeError trên Windows (cp1252 → utf-8)
+sys.stdout.reconfigure(encoding='utf-8')
+
 
 OUTPUT_DIR  = r"C:\Users\minhq\Documents\GitHub\PatchSeeker\pipeline_test\output"
 DATA_DIR    = r"C:\Users\minhq\Documents\GitHub\PatchSeeker\pipeline_test\data"
@@ -19,16 +24,31 @@ BENCHMARK_STEP2 = os.path.join(OUTPUT_DIR, "benchmark_step2.json")
 
 
 def load_ranking(ranking_path, top_k=5):
-    """Đọc file ranking, trả về dict {cve_id: [(commit_id, rank), ...]}."""
-    rankings = {}
+    """Đọc file ranking từ tevatron faiss_retriever.
+    
+    Format tevatron: <query_id> <passage_id> <score>
+    Trong đó score là float (cosine similarity), không phải rank integer.
+    Rank được tính bằng cách đếm thứ tự theo score descending.
+    """
+    # Đọc tất cả: {cve_id: [(commit_id, score), ...]}
+    raw = {}
     with open(ranking_path) as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) < 3:
                 continue
-            cve_id, commit_id, rank = parts[0], parts[1], int(parts[2])
-            if rank <= top_k:
-                rankings.setdefault(cve_id, []).append((commit_id, rank))
+            cve_id, commit_id = parts[0], parts[1]
+            score = float(parts[2])   # score là float, không phải rank
+            raw.setdefault(cve_id, []).append((commit_id, score))
+
+    # Sort theo score desc, assign rank, lấy top_k
+    rankings = {}
+    for cve_id, entries in raw.items():
+        entries.sort(key=lambda x: x[1], reverse=True)
+        rankings[cve_id] = [
+            (commit_id, rank + 1, score)
+            for rank, (commit_id, score) in enumerate(entries[:top_k])
+        ]
     return rankings
 
 
@@ -128,11 +148,11 @@ def main():
         print(f"   {'Rank':<6} {'Commit Hash':<45} {'Message':<40}")
         print(f"   {'─'*4:<6} {'─'*10:<45} {'─'*20:<40}")
 
-        for commit_id, rank in sorted(rankings[cve_id], key=lambda x: x[1]):
+        for commit_id, rank, score in sorted(rankings[cve_id], key=lambda x: x[1]):
             commit_info = commit_index.get(commit_id, {})
             msg = commit_info.get("msg", "N/A")[:40]
             date = commit_info.get("date", "N/A")[:10]
-            print(f"   #{rank:<5} {commit_id[:12]}... ({date})  {msg}")
+            print(f"   #{rank:<5} {commit_id[:12]}... ({date})  score={score:.4f}  {msg}")
 
         # Top-1 là predicted VFC
         top1_commit = rankings[cve_id][0][0]
