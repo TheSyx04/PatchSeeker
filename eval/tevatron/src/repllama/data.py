@@ -106,8 +106,11 @@ class QueryPreProcessor:
         self.query_max_length = query_max_length
 
     def __call__(self, example):
-        query_id = example['query_id']
-        query = self.tokenizer.encode('query: ' + example['query'],
+        # Support both original tevatron format (query_id/query)
+        # và pipeline format (id/description)
+        query_id = example.get('query_id') or example.get('id')
+        query_text = example.get('query') or example.get('description', '')
+        query = self.tokenizer.encode('query: ' + query_text,
                                       add_special_tokens=False,
                                       max_length=self.query_max_length-3,
                                       truncation=True)
@@ -150,8 +153,11 @@ class CorpusPreProcessor:
         self.separator = separator
 
     def __call__(self, example):
-        docid = example['docid']
-        text = example['title'] + self.separator + example['text'] if 'title' in example else example['text']
+        # Support both original tevatron format (docid/text)
+        # và pipeline format (commit_id/msg)
+        docid = example.get('docid') or example.get('commit_id')
+        raw_text = example.get('text') or example.get('msg', '')
+        text = example['title'] + self.separator + raw_text if 'title' in example else raw_text
         text = self.tokenizer.encode('passage: ' + text,
                                      add_special_tokens=False,
                                      max_length=self.text_max_length-3,

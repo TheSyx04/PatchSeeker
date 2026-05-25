@@ -1,1 +1,6 @@
 final_data
+
+pipeline/data/*
+pipeline/repos/*
+pipeline/__pycache__
+pipeline_test/*
