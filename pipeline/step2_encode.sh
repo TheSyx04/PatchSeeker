@@ -10,18 +10,12 @@
 #   export SHARD_INDEX=0        # shard này: 0, 1, ..., (TOTAL_SHARDS-1)
 #   export TOTAL_SHARDS=2       # openssl=2, linux=8
 #   export ENCODE_QUERIES=true  # chỉ set true cho SHARD_INDEX=0
-#   bash /kaggle/working/PatchSeeker/pipeline/step2_encode.sh
+#   bash /kaggle/working/PatchSeeker/pipeline/step2_encode.sh 2>&1
 #
-# Input (Kaggle Dataset "patchseeker-<project>-data"):
-#   corpus.json, queries.json
-#
-# Output (lưu vào /kaggle/working/output/, rồi save lên Kaggle Dataset):
-#   corpus_emb/corpus_<NN>.pkl   ← shard embedding
-#   queries_emb/queries.pkl      ← (nếu ENCODE_QUERIES=true)
+# Ghi chú: luôn thêm "2>&1" cuối lệnh bash để xem đủ output/error
 # ============================================================
 
-set -e
-set -o pipefail
+# KHÔNG dùng "set -e" để tránh ẩn thông báo lỗi
 
 # ── Config từ env vars ────────────────────────────────────────
 PROJECT="${PROJECT:-openssl}"
@@ -31,7 +25,6 @@ ENCODE_QUERIES="${ENCODE_QUERIES:-false}"
 
 # Paths
 REPO_DIR="/kaggle/working/PatchSeeker"
-DATA_DIR="/kaggle/input/patchseeker-${PROJECT}-data"   # Kaggle Dataset input
 OUTPUT_DIR="/kaggle/working/output"
 EVAL_SRC="${REPO_DIR}/eval/tevatron/src"
 ENCODE_SCRIPT="${EVAL_SRC}/repllama/encode_qwen.py"
@@ -43,6 +36,27 @@ CKPT_DIR="${REPO_DIR}/checkpoints/${MODEL_FOLDER}"
 
 SHARD_PAD=$(printf "%02d" "${SHARD_INDEX}")
 
+# ── Auto-detect DATA_DIR ──────────────────────────────────────
+# Tìm corpus.json trong /kaggle/input/ (bất kể user đặt tên dataset gì)
+if [ -n "${DATA_DIR}" ] && [ -f "${DATA_DIR}/corpus.json" ]; then
+    echo "  DATA_DIR từ env: ${DATA_DIR}"
+else
+    CORPUS_FILE=$(find /kaggle/input -name "corpus.json" 2>/dev/null | head -1)
+    if [ -z "${CORPUS_FILE}" ]; then
+        echo "❌ Không tìm thấy corpus.json trong /kaggle/input/"
+        echo ""
+        echo "Các dataset đang mount:"
+        ls /kaggle/input/ 2>/dev/null || echo "  (không có dataset nào)"
+        echo ""
+        echo "Giải pháp:"
+        echo "  1. Đảm bảo đã add dataset 'patchseeker-openssl-data' vào notebook"
+        echo "  2. Hoặc set thủ công: export DATA_DIR=/kaggle/input/<tên-dataset>"
+        exit 1
+    fi
+    DATA_DIR=$(dirname "${CORPUS_FILE}")
+    echo "  ✅ Auto-detect DATA_DIR: ${DATA_DIR}"
+fi
+
 mkdir -p "${OUTPUT_DIR}/corpus_emb"
 mkdir -p "${OUTPUT_DIR}/queries_emb"
 mkdir -p "${CKPT_DIR}"
@@ -53,22 +67,32 @@ echo "  Project:      ${PROJECT}"
 echo "  Shard:        ${SHARD_INDEX} / ${TOTAL_SHARDS}"
 echo "  Data:         ${DATA_DIR}"
 echo "  Output:       ${OUTPUT_DIR}/corpus_emb/corpus_${SHARD_PAD}.pkl"
+echo "  REPO_DIR:     ${REPO_DIR}"
 echo "============================================================"
+
+# Kiểm tra repo
+if [ ! -f "${ENCODE_SCRIPT}" ]; then
+    echo "❌ Không tìm thấy encode script: ${ENCODE_SCRIPT}"
+    echo "  → Chạy: git clone https://github.com/<user>/PatchSeeker /kaggle/working/PatchSeeker"
+    exit 1
+fi
 
 # ── [0] Cài dependencies ─────────────────────────────────────
 echo ""
 echo "[0] Cài dependencies..."
 pip install -q -r "${REPO_DIR}/pipeline_test/requirements.txt"
+if [ $? -ne 0 ]; then
+    echo "❌ pip install thất bại — thử cài từng package:"
+    pip install -q torch transformers accelerate peft bitsandbytes faiss-gpu-cu12 datasets huggingface-hub tqdm
+fi
 
 # Cài tevatron từ source
 if ! python3 -c "import tevatron" 2>/dev/null; then
+    echo "  → Cài tevatron từ source..."
     pip install -q -e "${EVAL_SRC}"
 fi
 export PYTHONPATH="${EVAL_SRC}:${PYTHONPATH}"
 
-# ── [1] Download checkpoint ───────────────────────────────────
-echo ""
-echo "[1] Download LoRA checkpoint..."
 python3 - <<PYEOF
 import os
 from huggingface_hub import hf_hub_download
