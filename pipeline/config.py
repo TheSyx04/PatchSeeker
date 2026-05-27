@@ -12,9 +12,9 @@ PROJECTS = {
         "repo_url":      "https://github.com/torvalds/linux",
         "repo_name":     "linux",
         "window_days":   365,        # paper: 1-year window trước CVE date
-        "shallow_since": "2019-01-01", # Chỉ clone commits từ 2019+ (bắt đầu của 1-year window cho CVE 2020)
+        "shallow_since": "2019-01-01",
         "batch_size":    16,         # T4 16GB với 4-bit NF4
-        "num_shards":    8,          # ~390K commits / ~50K per session
+        "num_shards":    16,
         "hf_repo":       "Ngoc9392/Patchseeker_Checkpoint",
         "model_folder":  "qwen3_8b",
         "base_model":    "Qwen/Qwen3-8B",
@@ -27,7 +27,7 @@ PROJECTS = {
         "repo_name":   "openssl",
         "window_days": 365,
         "batch_size":  16,
-        "num_shards":  2,          # ~65K commits / ~33K per session
+        "num_shards":  2,
         "hf_repo":     "Ngoc9392/Patchseeker_Checkpoint",
         "model_folder": "qwen3_8b",
         "base_model":  "Qwen/Qwen3-8B",
