@@ -16,7 +16,7 @@
 # ── Config ────────────────────────────────────────────────────
 PROJECT="${PROJECT:-openssl}"
 TOTAL_SHARDS="${TOTAL_SHARDS:-2}"
-DEPTH="${DEPTH:-10}"
+DEPTH="${DEPTH:-1}"       # top-1 VFC per CVE (đổi thành 10 nếu muốn Recall@K)
 
 REPO_DIR="/kaggle/working/PatchSeeker"
 OUTPUT_DIR="/kaggle/working/output"

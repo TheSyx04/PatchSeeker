@@ -46,5 +46,6 @@ EVAL_SRC      = "eval/tevatron/src"     # tevatron source
 NVD_API_URL   = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_RATE_WAIT = 6.5   # giây giữa các requests (tránh 5req/30s limit)
 
-# ── Tevatron output format ───────────────────────────────────────────────────
-RETRIEVAL_DEPTH = 10   # top-K commits per CVE
+# ── Tevatron output format ────────────────────────────────────────────
+RETRIEVAL_DEPTH = 1   # top-1 VFC candidate per CVE (cho SZZ / dataset building)
+                      # Đổi thành 10 nếu muốn tính Recall@1/5/10
